@@ -1,0 +1,12 @@
+Tools
+
+
+	Can copy windows-privesc-check2.exe to run automatically
+
+
+Privesc
+
+	Unquoted service paths
+		If a process is running in a dir with spaces, but unquoted, try to make an exploit in one of the parent directories in that path
+
+	
