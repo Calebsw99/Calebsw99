@@ -1,0 +1,30 @@
+JohnTheRipper
+
+	Can make john add numbers at the end by adding $[0-9] at the end of the wordlist rules in the john.config file
+
+Crunch
+
+	Great for making wordlists if you have a few words, but need to test with characters in ceratin places
+
+	crunch {min-length} {max-length} example%%%%^^ -o text.txt
+	crunch 11 11 - bella%%%%^^
+
+	@ Lower case alphabet
+	, Upper case alphabet
+	% Numbers
+	^ special characters
+
+Hydra
+
+	Can be used for most network service brute forces
+	ftp://IP or ssh://IP to specify protocol
+
+	Can be used for http-form-post attacks with standard login prompts that use POST
+	hydra $IP http-form-post "log=^USER^&pwd=^PASS^:Error" -L -P -vV -f
+		:Error is something that pops up showing the login failed
+
+
+Medusa
+
+	Can be used for most network service brute forces
+	works well with HTTP brute force logins
