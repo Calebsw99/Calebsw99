@@ -1,0 +1,123 @@
+Enum
+
+
+	Traditional approach
+
+		net user
+
+			shows AD info about the current user
+
+		net user /domain
+
+			shows all users in the domain
+
+		net user <username> /domain
+
+			if run as an admin, will show all AD info about a certain user
+
+		net group /domain
+
+			lists groups
+
+
+	Modern approach
+
+
+		[System.DirectoryServices.ActiveDirectory.Domain]::GetCurrentDomain()
+
+			enumerates info about the domain, and lists PDC
+
+			see ad_enum.ps1 for more details and documentation
+
+
+	Nested Groups
+
+
+		see ad_enum.ps1 for more details and documentation
+
+
+	Curretnly Logged on Users
+
+
+		Can use the NetWkstaUserEnum and NetSessionEnum APIs to enumerate logged in users
+
+			NetWkstaUserEnum queries the local PC for sessions and requires locadmin rights
+
+			NetSessionEnum queries the DC for sessions and can be done with standard user rights
+
+		Both listed APIs are OS APIs, and not straight forward to call. Enter Powershell-Empire and PowerView.ps1
+
+			Get-NetLoggedon -ComputerName client251       Uses the NetWkstaUserEnum API
+
+			Get-NetSession -ComputerName dc01             Uses the NetSessionEnum API
+
+
+	Service Principal Names
+
+
+		When users run an app, the app runs with their user account rights
+		When a system runs an app, it runs with a Service Account
+		Some systems will need an AD account for specific rights
+		and the Service Principal Name will map the service on the server to the AD account
+
+		see ad_enum.ps1 for more details and documentation
+
+
+Active Directory Authentication
+
+
+	NTLM
+
+
+		3 nodes - the client, the app server, and the DC
+
+		(1) The Client makes an NTLM hash of the user's supplied password
+		(2) The Client sends the App Server the username 
+		(3) The App Server sends a nonce / challenge
+		(4) The Client encrypts the nonce using the NTLM hash and sends the Response to the App Server
+		(5) The App Server sends the username, response, and nonce to the DC
+		(6) The DC checks the username, finds the stored password hash, and encrypts the nonce with the stored password hash
+		(7) If the Response and the encrypted hash match, the user is authenticated
+
+
+	Kerberos
+
+
+		3 nodes - the client, the app server, and the key distribution center (KDC)
+
+
+		(1) The user logs into the Client, and the client sends an Authentication Server Request (AS_REQ). The AS_REQ is the username and a timestamp that is encrypted with a hash of the password
+
+			Client   >>   AS_REQ (Username + {timestamp})   >>   KDC
+
+		(2) The KDC receives the AS_REQ, looks up the username and password, and decrypts the AS_REQ. If the timestamp isn't a duplicate, which would indicate a replay attack, the auth is successful.
+
+			KDC opens AS_REQ and checks the timestamp
+
+		(3) The KDC replies with an Authentication Server Reply (AS_REP) that contains an encrypted session key and a Ticket Granting Ticket (TGT). The session key is encrypted with the user's password, and can be decrypted by the client.
+
+			KDC   >>   AS_REP ({session key} + [TGT])   >>   Client
+
+		The TGT contains the user's AD info, timestamp, IP of the client, and session key. The TGT is also encrypted by a secret key from the KDC, and is valid for 10 hours by default. Renewal is automatic
+
+		When the user tries to access a resource
+
+		(4) The client constructs a Ticket Granting Service Request (TGS_REQ) made of the current user and timestamp (encrypted with the session key), the SPN of the resource, and the encrypted TGT.
+
+			Client    >>    TGS_REQ ({Username + timestamp} + SPN of resource + [TGT])    >>    KDC
+
+		(5) The KDC receives the request, checks if the SPN exists, and the TGT is decrypted. The session key is then extracted from the TGT and used to decrypt the Username and timestamp.
+
+			1. Check to see if the TGT has a valid timestamp
+			2. Username from the TGS_REQ has to match the username from the TGT
+			3. The IP from the TGS_REQ has to match the IP from the TGT
+
+		(6) If the verification is successful, the KDC sends a Ticket Granting Server Reply (TGS_REP). This contains the SPN that access has been granted, a session key for the client-SPN connection, and a service ticket containing the username, group memberships, and newly created session key. The SPN and new session key are encrypted using the TGT session key, and the service ticket is encrypted using the password hash of the service account of the SPN
+
+			KDC    >>    TGS_REP ({SPN} + {client-SPN session key} + {service ticket})    >>    Client
+
+		(7) The client sends an application request (AP_REQ) to the app server. This is the username and a timestamp encrypted with the service ticket session key, along with the service key.
+
+			Client    >>    AP_REQ ({Username + timestamp} + {service ticket})    >>    App Server
+
+		(8) The App Server decrypts the service ticket and then extracts the Username and timestamp. If the usernames in the AP_REQ and the service ticket match, the App Server checks the group access in the service ticket to see what access should be granted
