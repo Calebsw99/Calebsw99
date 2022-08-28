@@ -110,3 +110,16 @@ Foreach($obj in $Result)
 }
 #>
 <# This will usually have the hostname, which we can use nslookup to find and navigate to #>
+
+
+
+<#-------------------Password Guessing--------------------#>
+
+
+
+<# 
+If we want to test an account password, we can amend the body of the query to this
+$Searcher = New-Object System.DirectoryServices.DirectoryEntry($SearchString, "jeff_admin","Qwerty09!"))
+
+If the password is right, the search request will be completed properly
+#>

